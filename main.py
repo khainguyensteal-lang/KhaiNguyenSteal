@@ -1,6 +1,7 @@
 import os
 import json
 import io
+import re
 
 import discord
 from discord import app_commands
@@ -30,6 +31,24 @@ DEFAULT_EMBED2_DESC = (
     "Chúc Bạn Có Thật Nhiều Khoảnh Khắc Vui Vẻ Và Kết Bạn Thật Nhiều Nhé! 🎉"
 )
 DEFAULT_EMBED2_FOOTER = "🐱 {guild} • Hãy Cùng Nhau Vui Chơi Thật Vui Nhé!"
+
+# ── Hàm xử lý Unicode ──────────────────────────────────────────────────────
+def normalize_text(text: str) -> str:
+    """Chuyển đổi ký tự Unicode đặc biệt thành ký tự thường"""
+    # Mapping các ký tự đặc biệt sang thường
+    unicode_map = {
+        '𝐀': 'A', '𝐁': 'B', '𝐂': 'C', '𝐃': 'D', '𝐄': 'E', '𝐅': 'F', '𝐆': 'G',
+        '𝐇': 'H', '𝐈': 'I', '𝐉': 'J', '𝐊': 'K', '𝐋': 'L', '𝐌': 'M', '𝐍': 'N',
+        '𝐎': 'O', '𝐏': 'P', '𝐐': 'Q', '𝐑': 'R', '𝐒': 'S', '𝐓': 'T', '𝐔': 'U',
+        '𝐕': 'V', '𝐖': 'W', '𝐗': 'X', '𝐘': 'Y', '𝐙': 'Z',
+        '𝐚': 'a', '𝐛': 'b', '𝐜': 'c', '𝐝': 'd', '𝐞': 'e', '𝐟': 'f', '𝐠': 'g',
+        '𝐡': 'h', '𝐢': 'i', '𝐣': 'j', '𝐤': 'k', '𝐥': 'l', '𝐦': 'm', '𝐧': 'n',
+        '𝐨': 'o', '𝐩': 'p', '𝐪': 'q', '𝐫': 'r', '𝐬': 's', '𝐭': 't', '𝐮': 'u',
+        '𝐯': 'v', '𝐰': 'w', '𝐱': 'x', '𝐲': 'y', '𝐳': 'z',
+    }
+    for unicode_char, normal_char in unicode_map.items():
+        text = text.replace(unicode_char, normal_char)
+    return text
 
 # ── Intents ───────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -96,6 +115,14 @@ def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
 
 def generate_welcome_card(avatar_bytes: bytes, username: str, member_number: int,
                            guild_name: str) -> io.BytesIO:
+    # Xử lý tên guild - chuyển Unicode đặc biệt thành thường
+    guild_name_normal = normalize_text(guild_name)
+    # Nếu tên đã được normalize và khác tên gốc, thêm flag
+    if guild_name_normal != guild_name:
+        guild_name_display = guild_name_normal
+    else:
+        guild_name_display = guild_name
+    
     W, H = 900, 300
     RADIUS = 34
     TOP_LEFT = (255, 165, 0, 50)
@@ -132,7 +159,8 @@ def generate_welcome_card(avatar_bytes: bytes, username: str, member_number: int
     text_x = avatar_x + avatar_size + 40
     max_text_width = W - text_x - 40
 
-    title_text = f"Chào Mừng Đến Với {guild_name}! 😊"
+    # Sử dụng guild_name_display đã được xử lý
+    title_text = f"Chào Mừng Đến Với {guild_name_display}! 😊"
     title_font = _font(FONT_BOLD, 32)
     draw.text((text_x, 55), title_text, font=title_font, fill=(255, 255, 255, 255))
 
@@ -175,7 +203,7 @@ async def build_welcome_card_file(member: discord.Member) -> discord.File:
         avatar_bytes,
         str(member),
         member.guild.member_count,
-        member.guild.name,
+        member.guild.name,  # Vẫn truyền tên gốc, hàm generate sẽ xử lý
     )
     return discord.File(buffer, filename="welcome_card.png")
 
