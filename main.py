@@ -15,10 +15,6 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "1512303397120901191"))
 CONFIG_FILE = "welcome_config.json"
 
-FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-FONT_BOLD = os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")
-FONT_REGULAR = os.path.join(FONT_DIR, "DejaVuSans.ttf")
-
 ACCENT_COLOUR = discord.Colour.from_rgb(255, 165, 0)
 
 # Mặc định cho khối chào mừng thứ 2 (trước đây là embed, giờ là Components V2)
@@ -79,38 +75,59 @@ async def owner_only(interaction: discord.Interaction) -> bool:
 # ── Tạo Ảnh Welcome ──────────────────────────────────────────────────────────
 _FONT_CACHE: dict = {}
 
-def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
-    cache_key = (path, size)
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Tìm và load font từ hệ thống"""
+    cache_key = (size, bold)
     if cache_key in _FONT_CACHE:
         return _FONT_CACHE[cache_key]
 
-    is_bold = path == FONT_BOLD
-    candidates = [path]
-    if is_bold:
-        candidates += ["arialbd.ttf", "Arial Bold.ttf",
-                       "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                       "/System/Library/Fonts/Supplemental/Arial Bold.ttf"]
+    # Danh sách các font có sẵn trên hệ thống Linux (Railway)
+    if bold:
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+            # Font mặc định của hệ thống
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
+        ]
     else:
-        candidates += ["arial.ttf", "Arial.ttf",
-                       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                       "/System/Library/Fonts/Supplemental/Arial.ttf"]
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+            # Font mặc định của hệ thống
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+        ]
 
-    last_error = None
-    for candidate in candidates:
+    # Thử từng đường dẫn font
+    for font_path in font_paths:
         try:
-            font = ImageFont.truetype(candidate, size)
+            font = ImageFont.truetype(font_path, size)
             _FONT_CACHE[cache_key] = font
+            print(f"✅ Đã tìm thấy font: {font_path}")
             return font
-        except OSError as e:
-            last_error = e
+        except:
             continue
 
-    raise RuntimeError(
-        "❌ Không Tìm Thấy File Font Nào Để Vẽ Ảnh Welcome.\n"
-        f"Hãy Đảm Bảo Thư Mục 'assets' Nằm CÙNG THƯ MỤC Với File Bot Đang Chạy.\n"
-        f"Đường Dẫn Đang Tìm: {FONT_DIR}\n"
-        f"Lỗi Gốc: {last_error}"
-    )
+    # Nếu không tìm thấy font nào, thử dùng font mặc định của PIL
+    try:
+        font = ImageFont.load_default()
+        _FONT_CACHE[cache_key] = font
+        print("⚠️ Đang dùng font mặc định của PIL (có thể không đẹp)")
+        return font
+    except:
+        raise RuntimeError(
+            "❌ Không Tìm Thấy File Font Nào Để Vẽ Ảnh Welcome.\n"
+            "Hãy Cài Đặt Gói 'fonts-dejavu' Hoặc 'fonts-liberation' Trên Hệ Thống."
+        )
 
 def generate_welcome_card(avatar_bytes: bytes, username: str, member_number: int,
                            guild_name: str) -> io.BytesIO:
@@ -151,20 +168,20 @@ def generate_welcome_card(avatar_bytes: bytes, username: str, member_number: int
     max_text_width = W - text_x - 40
 
     title_text = f"Chào Mừng Đến Với {guild_name}! 😊"
-    title_font = _font(FONT_BOLD, 32)
+    title_font = _font(32, bold=True)
     draw.text((text_x, 55), title_text, font=title_font, fill=(255, 255, 255, 255))
 
     user_text = f"@{username}"
-    user_font = _font(FONT_BOLD, 26)
+    user_font = _font(26, bold=True)
     draw.text((text_x, 105), user_text, font=user_font, fill=(255, 215, 0, 255))
 
     draw.text((text_x, 150), "Đã Đặt Chân Đến Thế Giới Mèo! 🐾", 
-               font=_font(FONT_REGULAR, 18), fill=(255, 255, 255, 220))
+               font=_font(18, bold=False), fill=(255, 255, 255, 220))
     draw.text((text_x, 180), "Hãy Cùng Nhau Vui Chơi Và Kết Bạn Nhé! 😁", 
-               font=_font(FONT_REGULAR, 16), fill=(255, 255, 255, 180))
+               font=_font(16, bold=False), fill=(255, 255, 255, 180))
 
     badge_text = f"Thành Viên #{member_number}"
-    badge_font = _font(FONT_BOLD, 18)
+    badge_font = _font(18, bold=True)
     btw = draw.textlength(badge_text, font=badge_font)
     pad_x = 22
     badge_w = btw + pad_x * 2
@@ -246,10 +263,10 @@ class WelcomeView(discord.ui.LayoutView):
 
         container.add_item(discord.ui.TextDisplay(
             "**🚀 Gợi Ý Dành Cho Bạn**\n\n"
-            f"📌 Đọc {rules_text} Để Nắm Rõ Nội Quy Server\n"
-            f"💬 Ghé {intro_text} Để Giới Thiệu Bản Thân Nhé\n"
-            f"🎮 Kết Bạn Và Cùng Nhau Chiến Game Vui Vẻ\n"
-            f"🐱 Đừng Ngần Ngại Đặt Câu Hỏi Nếu Cần Giúp Đỡ!"
+            f"> 📌 Đọc {rules_text} Để Nắm Rõ Nội Quy Server\n"
+            f"> 💬 Ghé {intro_text} Để Giới Thiệu Bản Thân Nhé\n"
+            f"> 🎮 Kết Bạn Và Cùng Nhau Chiến Game Vui Vẻ\n"
+            f"> 🐱 Đừng Ngần Ngại Đặt Câu Hỏi Nếu Cần Giúp Đỡ!"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(discord.ui.TextDisplay(
@@ -317,11 +334,13 @@ async def on_ready():
     print(f"✅ Đã Đăng Nhập: {bot.user} (ID: {bot.user.id})")
     print(f"🐱 Meow Town Bot Đã Sẵn Sàng!")
     print(f"👑 Owner ID: {OWNER_ID}")
-    if not os.path.exists(FONT_BOLD) or not os.path.exists(FONT_REGULAR):
-        print(
-            f"⚠️ CẢNH BÁO: Không Tìm Thấy Font Tại '{FONT_DIR}'.\n"
-            f"Copy Thư Mục 'assets' Vào CÙNG THƯ MỤC Với Bot."
-        )
+    
+    # Kiểm tra font có sẵn không
+    try:
+        test_font = _font(16, bold=False)
+        print("✅ Font hệ thống đã sẵn sàng!")
+    except:
+        print("⚠️ Không tìm thấy font, bot sẽ dùng font mặc định")
     
     try:
         synced = await bot.tree.sync()
@@ -342,15 +361,20 @@ async def on_member_join(member: discord.Member):
 
     if channel is not None:
         # ── Gửi tin nhắn chào mừng với Components V2 (có ảnh card) ──────────
-        file = await build_welcome_card_file(member)
-        view = WelcomeView(
-            member, 
-            cfg.get("rules_channel"), 
-            cfg.get("ping_role"),
-            cfg.get("intro_channel")
-        )
-        allowed = discord.AllowedMentions(users=True, roles=True, everyone=False)
-        await channel.send(view=view, file=file, allowed_mentions=allowed)
+        try:
+            file = await build_welcome_card_file(member)
+            view = WelcomeView(
+                member, 
+                cfg.get("rules_channel"), 
+                cfg.get("ping_role"),
+                cfg.get("intro_channel")
+            )
+            allowed = discord.AllowedMentions(users=True, roles=True, everyone=False)
+            await channel.send(view=view, file=file, allowed_mentions=allowed)
+        except Exception as e:
+            print(f"❌ Lỗi tạo ảnh welcome: {e}")
+            # Gửi tin nhắn đơn giản nếu lỗi ảnh
+            await channel.send(f"🎉 Chào mừng {member.mention} đến với server!")
         
         # ── Gửi khối chào mừng thứ 2 vào kênh intro_channel (nếu có) ───────
         intro_channel_id = cfg.get("intro_channel")
@@ -391,10 +415,10 @@ async def setwelcome(
     )
 
     fields = {
-        "📌 Kênh Chào Mừng": channel.mention,
-        "📋 Kênh Nội Quy": rules_channel.mention if rules_channel else "Không Có",
-        "💬 Kênh Giới Thiệu": intro_channel.mention if intro_channel else "Không Có",
-        "🔔 Role Ping": ping_role.mention if ping_role else "Không Có"
+        "> 📌 Kênh Chào Mừng": channel.mention,
+        "> 📋 Kênh Nội Quy": rules_channel.mention if rules_channel else "Không Có",
+        "> 💬 Kênh Giới Thiệu": intro_channel.mention if intro_channel else "Không Có",
+        "> 🔔 Role Ping": ping_role.mention if ping_role else "Không Có"
     }
     
     view = discord.ui.LayoutView()
@@ -471,14 +495,17 @@ async def testwelcome(interaction: discord.Interaction):
     cfg = get_guild_config(interaction.guild_id)
     
     # ── Gửi Components V2 test ──────────────────────────────────────────────
-    file = await build_welcome_card_file(interaction.user)
-    view = WelcomeView(
-        interaction.user, 
-        cfg.get("rules_channel"), 
-        cfg.get("ping_role"),
-        cfg.get("intro_channel")
-    )
-    await interaction.followup.send(view=view, file=file, ephemeral=True)
+    try:
+        file = await build_welcome_card_file(interaction.user)
+        view = WelcomeView(
+            interaction.user, 
+            cfg.get("rules_channel"), 
+            cfg.get("ping_role"),
+            cfg.get("intro_channel")
+        )
+        await interaction.followup.send(view=view, file=file, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Lỗi tạo ảnh: {e}", ephemeral=True)
     
     # ── Gửi khối chào mừng thứ 2 test (Components V2, Avatar bên phải) ──────
     view2 = WelcomeEmbed2View(interaction.user, cfg.get("ping_role"), cfg)
