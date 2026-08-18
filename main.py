@@ -15,6 +15,10 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "1512303397120901191"))
 CONFIG_FILE = "welcome_config.json"
 
+FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+FONT_BOLD = os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")
+FONT_REGULAR = os.path.join(FONT_DIR, "DejaVuSans.ttf")
+
 ACCENT_COLOUR = discord.Colour.from_rgb(255, 165, 0)
 
 # Mặc định cho khối chào mừng thứ 2
@@ -75,158 +79,89 @@ async def owner_only(interaction: discord.Interaction) -> bool:
 # ── Tạo Ảnh Welcome ──────────────────────────────────────────────────────────
 _FONT_CACHE: dict = {}
 
-def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Tìm và load font từ hệ thống"""
-    cache_key = (size, bold)
+def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
+    cache_key = (path, size)
     if cache_key in _FONT_CACHE:
         return _FONT_CACHE[cache_key]
 
-    # Danh sách font trên hệ thống Linux
-    if bold:
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-        ]
-    else:
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        ]
-
-    # Thử từng đường dẫn
-    for font_path in font_paths:
-        try:
-            font = ImageFont.truetype(font_path, size)
-            _FONT_CACHE[cache_key] = font
-            return font
-        except:
-            continue
-
-    # Fallback: font mặc định
     try:
-        font = ImageFont.load_default()
+        font = ImageFont.truetype(path, size)
         _FONT_CACHE[cache_key] = font
         return font
     except:
-        raise RuntimeError("❌ Không tìm thấy font nào!")
+        # Fallback: dùng font mặc định nếu không tìm thấy
+        font = ImageFont.load_default()
+        _FONT_CACHE[cache_key] = font
+        return font
 
 def generate_welcome_card(avatar_bytes: bytes, username: str, member_number: int,
                            guild_name: str) -> io.BytesIO:
-    W, H = 800, 350  # Tăng chiều cao lên 350
-    RADIUS = 30
-    
-    # Gradient nền đẹp hơn
-    grad = Image.new("RGBA", (W, H))
+    W, H = 900, 300
+    RADIUS = 34
+    TOP_LEFT = (255, 165, 0, 50)
+    BOTTOM_RIGHT = (255, 100, 0, 50)
+
+    grad = Image.new("RGBA", (W, H), TOP_LEFT)
+    gpix = grad.load()
     for y in range(H):
         for x in range(W):
-            # Tạo gradient từ cam sang hồng
-            t = y / H
-            r = int(255 - 50 * t)
-            g = int(165 - 80 * t)
-            b = int(0 + 100 * t)
-            grad.putpixel((x, y), (r, g, b, 200))
-    
-    # Bo góc
+            t = (x / W + y / H) / 2
+            gpix[x, y] = (
+                int(TOP_LEFT[0] + (BOTTOM_RIGHT[0] - TOP_LEFT[0]) * t),
+                int(TOP_LEFT[1] + (BOTTOM_RIGHT[1] - TOP_LEFT[1]) * t),
+                int(TOP_LEFT[2] + (BOTTOM_RIGHT[2] - TOP_LEFT[2]) * t),
+                200,
+            )
+
     mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, W - 1, H - 1], radius=RADIUS, fill=255)
     card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     card.paste(grad, (0, 0), mask)
-    
+
     draw = ImageDraw.Draw(card)
-    
-    # Avatar tròn
-    avatar_size = 120
-    avatar_x, avatar_y = 50, (H - avatar_size) // 2
-    
+
+    avatar_size = 118
+    avatar_x, avatar_y = 55, (H - avatar_size) // 2
+
     avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize((avatar_size, avatar_size))
     amask = Image.new("L", (avatar_size, avatar_size), 0)
     ImageDraw.Draw(amask).ellipse([0, 0, avatar_size, avatar_size], fill=255)
     card.paste(avatar_img, (avatar_x, avatar_y), amask)
-    
-    # Vẽ viền cho avatar
-    draw.ellipse([avatar_x - 3, avatar_y - 3, avatar_x + avatar_size + 3, avatar_y + avatar_size + 3],
-                 outline=(255, 215, 0, 255), width=4)
-    
-    # Text bắt đầu từ đây
-    text_x = avatar_x + avatar_size + 35
-    text_y = 50
-    
-    # Dòng 1: Chào mừng
-    try:
-        font_title = _font(28, bold=True)
-        title = f"Chào Mừng Đến Với {guild_name}! 😊"
-        draw.text((text_x, text_y), title, font=font_title, fill=(255, 255, 255, 255))
-    except:
-        draw.text((text_x, text_y), f"Chào Mừng Đến Với {guild_name}!", fill=(255, 255, 255))
-    
-    # Dòng 2: Tên user
-    try:
-        font_name = _font(24, bold=True)
-        draw.text((text_x, text_y + 45), f"@{username}", font=font_name, fill=(255, 215, 0, 255))
-    except:
-        draw.text((text_x, text_y + 45), f"@{username}", fill=(255, 215, 0))
-    
-    # Dòng 3: Slogan
-    try:
-        font_slogan = _font(16, bold=False)
-        draw.text((text_x, text_y + 85), "🐾 Đã Đặt Chân Đến Thế Giới Mèo!", 
-                  font=font_slogan, fill=(255, 255, 255, 220))
-    except:
-        draw.text((text_x, text_y + 85), "Đã Đặt Chân Đến Thế Giới Mèo!", fill=(255, 255, 255))
-    
-    # Dòng 4: Lời chúc
-    try:
-        font_greeting = _font(14, bold=False)
-        draw.text((text_x, text_y + 115), "Hãy Cùng Nhau Vui Chơi Và Kết Bạn Nhé! 😁",
-                  font=font_greeting, fill=(255, 255, 255, 180))
-    except:
-        draw.text((text_x, text_y + 115), "Hãy Cùng Nhau Vui Chơi Và Kết Bạn Nhé!", fill=(255, 255, 255))
-    
-    # Badge thành viên
-    badge_text = f"# {member_number}"
-    try:
-        badge_font = _font(22, bold=True)
-        # Đo chiều dài text
-        bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
-        btw = bbox[2] - bbox[0]
-        pad_x = 25
-        badge_w = btw + pad_x * 2
-        badge_h = 50
-        badge_x2 = W - 30
-        badge_x1 = badge_x2 - badge_w
-        badge_y2 = H - 25
-        badge_y1 = badge_y2 - badge_h
-        
-        # Vẽ badge
-        draw.rounded_rectangle([badge_x1, badge_y1, badge_x2, badge_y2],
-                               radius=badge_h // 2, fill=(255, 165, 0, 220))
-        draw.rounded_rectangle([badge_x1, badge_y1, badge_x2, badge_y2],
-                               radius=badge_h // 2, outline=(255, 215, 0, 255), width=2)
-        
-        # Text trong badge
-        text_bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
-        text_w = text_bbox[2] - text_bbox[0]
-        text_h = text_bbox[3] - text_bbox[1]
-        text_x_pos = badge_x1 + (badge_w - text_w) // 2
-        text_y_pos = badge_y1 + (badge_h - text_h) // 2 - text_bbox[1]
-        draw.text((text_x_pos, text_y_pos), badge_text, font=badge_font, fill=(255, 255, 255))
-        
-        # Thêm chữ "Thành Viên" phía trên badge
-        member_label_font = _font(12, bold=False)
-        label_text = "THÀNH VIÊN"
-        label_bbox = draw.textbbox((0, 0), label_text, font=member_label_font)
-        label_w = label_bbox[2] - label_bbox[0]
-        label_x = badge_x1 + (badge_w - label_w) // 2
-        draw.text((label_x, badge_y1 - 20), label_text, font=member_label_font, fill=(255, 215, 0, 200))
-    except:
-        # Fallback nếu lỗi font
-        draw.text((W - 150, H - 40), f"#{member_number}", fill=(255, 255, 255))
-    
-    # Lưu ảnh
+    draw = ImageDraw.Draw(card)
+
+    text_x = avatar_x + avatar_size + 40
+    max_text_width = W - text_x - 40
+
+    title_text = f"Chào Mừng Đến Với {guild_name}! 😊"
+    title_font = _font(FONT_BOLD, 32)
+    draw.text((text_x, 55), title_text, font=title_font, fill=(255, 255, 255, 255))
+
+    user_text = f"@{username}"
+    user_font = _font(FONT_BOLD, 26)
+    draw.text((text_x, 105), user_text, font=user_font, fill=(255, 215, 0, 255))
+
+    draw.text((text_x, 150), "Đã Đặt Chân Đến Thế Giới Mèo! 🐾", 
+               font=_font(FONT_REGULAR, 18), fill=(255, 255, 255, 220))
+    draw.text((text_x, 180), "Hãy Cùng Nhau Vui Chơi Và Kết Bạn Nhé! 😁", 
+               font=_font(FONT_REGULAR, 16), fill=(255, 255, 255, 180))
+
+    badge_text = f"Thành Viên #{member_number}"
+    badge_font = _font(FONT_BOLD, 18)
+    btw = draw.textlength(badge_text, font=badge_font)
+    pad_x = 22
+    badge_w = btw + pad_x * 2
+    badge_h = 42
+    badge_x2 = W - 40
+    badge_x1 = badge_x2 - badge_w
+    badge_y1 = H - 62
+    badge_y2 = badge_y1 + badge_h
+    draw.rounded_rectangle([badge_x1, badge_y1, badge_x2, badge_y2],
+                            radius=badge_h // 2, fill=(255, 165, 0, 255))
+    tb = draw.textbbox((0, 0), badge_text, font=badge_font)
+    th = tb[3] - tb[1]
+    draw.text((badge_x1 + pad_x, badge_y1 + (badge_h - th) // 2 - tb[1]),
+              badge_text, font=badge_font, fill=(255, 255, 255, 255))
+
     buffer = io.BytesIO()
     card.save(buffer, format="PNG")
     buffer.seek(0)
@@ -244,7 +179,7 @@ async def build_welcome_card_file(member: discord.Member) -> discord.File:
     )
     return discord.File(buffer, filename="welcome_card.png")
 
-# ── Giao Diện Welcome (Components V2) ──────────────────────────────────────
+# ── Giao Diện Welcome ──────────────────────────────────────────────────────
 class WelcomeView(discord.ui.LayoutView):
     def __init__(self, member: discord.Member, rules_channel_id: int | None,
                  ping_role_id: int | None, intro_channel_id: int | None):
@@ -360,6 +295,12 @@ async def on_ready():
     print(f"✅ Đã Đăng Nhập: {bot.user} (ID: {bot.user.id})")
     print(f"🐱 Meow Town Bot Đã Sẵn Sàng!")
     print(f"👑 Owner ID: {OWNER_ID}")
+    
+    # Kiểm tra font
+    if os.path.exists(FONT_BOLD) and os.path.exists(FONT_REGULAR):
+        print(f"✅ Đã tìm thấy font tại: {FONT_DIR}")
+    else:
+        print(f"⚠️ Không tìm thấy font tại {FONT_DIR}")
     
     try:
         synced = await bot.tree.sync()
